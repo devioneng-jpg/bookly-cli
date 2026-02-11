@@ -13,17 +13,15 @@ async function main() {
   // Display banner
   console.log(
     chalk.cyan(
-      figlet.textSync('Orbit CLI', {
+      figlet.textSync('Bookly', {
         font: 'Standard',
         horizontalLayout: 'default',
       }),
     ),
   );
-  console.log(chalk.gray('A Cli based AI tool \n'));
+  console.log(chalk.gray('Shop with Bookly! \n'));
 
   const program = new Command('orbit');
-
-  program.version('0.0.1').description('Orbit CLI - Device Flow Authentication');
 
   // Add commands
   program.addCommand(wakeUp);
@@ -37,6 +35,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(chalk.red('Error running Orbit CLI:'), error);
+  console.error(chalk.red('Error running Bookly:'), error);
   process.exit(1);
 });
