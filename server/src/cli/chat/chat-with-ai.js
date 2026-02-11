@@ -32,11 +32,11 @@ const chatService = new ChatService();
 
 const SYSTEM_PROMPTS = {
   'order-check':
-    'You are a friendly customer support agent for Bookly. Help the customer check on their order status. Ask for their order number and provide helpful updates.',
+    'You are a friendly customer support agent for Bookly. The customer wants to check on their order status. You already asked whether they have an account or checked out as a guest — their answer is included as the first message. Based on their answer, guide them accordingly: if they have an account, ask for their email or order number; if they are a guest, ask for the order number and email used at checkout. Be helpful and provide clear updates.',
   refund:
-    'You are a friendly customer support agent for Bookly. Help the customer with their refund request. Be empathetic, ask for their order number and reason for the refund.',
+    'You are a friendly customer support agent for Bookly. The customer wants a refund. You already asked what is prompting their refund — their answer is included as the first message. Be empathetic and acknowledge their reason. Then ask for their order number so you can look into it. Explain the refund policy (30-day return window, original condition, digital purchases non-refundable) and walk them through the process.',
   general:
-    'You are a friendly customer support agent for Bookly. Help the customer with general questions about shipping policies, password resets, and account issues.',
+    'You are a friendly customer support agent for Bookly. The customer has a general question. You already asked about the nature of their question — their answer is included as the first message. Address their question directly and thoroughly. You can help with shipping policies, password resets, account issues, gift cards, and more.',
   chat: 'You are a friendly customer support agent for Bookly. Help the customer with whatever they need.',
 };
 
@@ -143,8 +143,7 @@ async function updateConversationTitle(
   messageCount,
 ) {
   if (messageCount === 1) {
-    const title =
-      userInput.slice(0, 50) + (userInput.length > 50 ? '...' : '');
+    const title = userInput.slice(0, 50) + (userInput.length > 50 ? '...' : '');
     chatService.updateTitle(conversationId, title);
   }
 }
@@ -194,10 +193,14 @@ async function chatLoop(conversation) {
   }
 }
 
-export async function startChat(mode = 'chat', conversationId = null) {
+export async function startChat(
+  mode = 'chat',
+  conversationId = null,
+  initialAnswer = null,
+) {
   try {
     intro(
-      boxen(chalk.bold.cyan('Orbit AI Chat'), {
+      boxen(chalk.bold.cyan('Bookly CLI Agent'), {
         padding: 1,
         borderStyle: 'double',
         borderColor: 'cyan',
@@ -206,6 +209,15 @@ export async function startChat(mode = 'chat', conversationId = null) {
 
     const user = getUserFromToken();
     const conversation = initConversation(user.id, conversationId, mode);
+
+    if (initialAnswer) {
+      await saveMessage(conversation.id, 'user', initialAnswer);
+      const systemPrompt =
+        SYSTEM_PROMPTS[conversation.mode] || SYSTEM_PROMPTS['chat'];
+      const aiResponse = await getAIResponse(conversation.id, systemPrompt);
+      await saveMessage(conversation.id, 'assistant', aiResponse);
+    }
+
     await chatLoop(conversation);
 
     outro(chalk.green('Thanks for chatting!'));
