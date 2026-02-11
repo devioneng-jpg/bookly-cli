@@ -1,5 +1,152 @@
 # Bookly CLI (Orbit CLI) — Data Flow Diagrams
 
+## High-Level System Overview
+
+Five core concerns and how they connect.
+
+```
+ ┌─────────────────────────────────────────────────────────────────────────────────┐
+ │                                                                                 │
+ │                          ┌─────────────┐                                        │
+ │                          │   CONTEXT    │                                        │
+ │                          │             │                                        │
+ │                          │ System      │                                        │
+ │                          │ prompts per │                                        │
+ │                          │ mode define │                                        │
+ │                          │ personality │                                        │
+ │                          └──────┬──────┘                                        │
+ │                                 │ injected into                                 │
+ │                                 │ messages[0]                                   │
+ │                                 ▼                                               │
+ │  ┌──────────────┐     ┌─────────────────────┐     ┌──────────────────┐         │
+ │  │ PERSISTENCE  │────▶│     STREAMING       │────▶│     AGENT        │         │
+ │  │              │     │                     │     │                  │         │
+ │  │ MemoryStore  │     │ streamText() sends  │     │ generateObject() │         │
+ │  │ holds every  │     │ messages + tools    │     │ returns a Zod-   │         │
+ │  │ interaction  │     │ to Claude API,      │     │ validated app    │         │
+ │  │ as a flat    │     │ yields SSE chunks   │     │ scaffold, writes │         │
+ │  │ append-only  │     │ via onChunk()       │     │ files to disk    │         │
+ │  │ log, queried │     │ callback            │     │                  │         │
+ │  │ by role      │     │                     │     └──────────────────┘         │
+ │  └──────▲───────┘     └──────────┬──────────┘                                  │
+ │         │ read history           │ may include                                  │
+ │         │ to build               │ tool definitions                             │
+ │         │ messages[]             ▼                                               │
+ │         │              ┌─────────────────────┐                                  │
+ │         │              │      TOOLS          │                                  │
+ │         │              │                     │                                  │
+ │         │              │ Zod-parameterized   │                                  │
+ │         │              │ functions Claude     │                                  │
+ │         │              │ can invoke:          │                                  │
+ │         │              │  • order_lookup      │                                  │
+ │         │              │  • process_refund    │                                  │
+ │         │              │  • search_faq        │                                  │
+ │         │              │                     │                                  │
+ │         │              │ SDK auto-executes   │                                  │
+ │         │              │ locally, feeds      │                                  │
+ │         │              │ result back to      │                                  │
+ │         │              │ Claude (up to 5     │                                  │
+ │         │              │ round-trips)        │                                  │
+ │         │              └─────────────────────┘                                  │
+ │         │                                                                       │
+ │         └──── all responses saved back ◄────────────────────────────────────    │
+ │                                                                                 │
+ └─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### How the five concerns map to source files
+
+```
+ CONCERN          SOURCE FILE(S)                       WHAT IT OWNS
+ ──────────────── ──────────────────────────────────── ──────────────────────────────────────
+ CONTEXT          chat-with-ai.js :: SYSTEM_PROMPTS    4 system prompts keyed by mode
+                  chat-with-ai-tool.js ::              (order-check, refund, general, chat)
+                    TOOL_SYSTEM_PROMPT                  + 1 tool-mode system prompt
+
+ STREAMING        cli/ai/anthropic-service.js          streamText() via Vercel AI SDK
+                  :: AIService.sendMessage()            onChunk callback, token-by-token
+                  config/anthropic.config.js            model ID + API key from env
+
+ TOOLS            config/tool.config.js                3 tools defined with Zod schemas
+                  :: availableTools[]                   + execute() handlers (mock data)
+                                                        toggle/enable/reset at runtime
+
+ AGENT            config/agent.config.js               ApplicationSchema (Zod)
+                  :: generateApplication()              generateObject() → fs.writeFile()
+
+ PERSISTENCE      memory.js :: MemoryStore             Singleton in-memory append-only log
+                  service/chat.service.js              CRUD over MemoryStore by role
+                  :: ChatService                       (auth, system, user, assistant)
+```
+
+### How data flows between the five concerns
+
+```
+                         USER INPUT (string)
+                               │
+                               ▼
+              ┌────────────────────────────────┐
+              │         PERSISTENCE            │
+              │                                │
+              │  ① Store user message          │
+              │  ② Read full history           │
+              │     (all user + assistant)      │
+              └──────────┬─────────────────────┘
+                         │ history[]
+                         ▼
+              ┌────────────────────────────────┐
+              │          CONTEXT               │
+              │                                │
+              │  ③ Prepend system prompt        │
+              │     based on current mode       │
+              │     → messages[0]              │
+              └──────────┬─────────────────────┘
+                         │ messages[]
+                         ▼
+              ┌────────────────────────────────┐
+              │         STREAMING              │
+              │                                │
+              │  ④ streamText(messages, tools)  │
+              │     → Claude API (HTTPS/SSE)   │
+              │     → onChunk per token         │
+              └─────┬──────────────────┬───────┘
+                    │                  │
+        ┌───────────┘                  └────────────┐
+        │ tool_use response?                        │ text response?
+        ▼                                           ▼
+ ┌──────────────┐                        ┌────────────────────┐
+ │    TOOLS     │                        │  Terminal Output    │
+ │              │                        │                    │
+ │ ⑤ execute()  │                        │ ⑥ marked.parse()   │
+ │   locally    │                        │   → rendered       │
+ │              │                        │   markdown         │
+ │ ⑥ result     │                        │                    │
+ │   sent back  │                        │ ⑦ Store assistant  │
+ │   to Claude  │──▶ back to STREAMING   │   message in       │
+ │   (auto)     │    for final answer    │   PERSISTENCE      │
+ └──────────────┘                        └────────────────────┘
+
+
+  ── OR, in AGENT mode: ──
+
+              ┌────────────────────────────────┐
+              │          AGENT                 │
+              │                                │
+              │  ④ generateObject(schema,       │
+              │     prompt)                     │
+              │     → Claude API (non-stream)  │
+              │     → Zod-validated JSON       │
+              │                                │
+              │  ⑤ fs.writeFile() per file      │
+              │     → project scaffold on disk │
+              │                                │
+              │  ⑥ Summary → terminal          │
+              │  ⑦ Store in PERSISTENCE        │
+              └────────────────────────────────┘
+```
+
+---
+
 ## 1. End-to-End: User Keystroke to Terminal Output
 
 Shows every data transformation from the moment the user types to the final rendered output.
