@@ -21,12 +21,16 @@ export class AIService {
    * @param {Function} onToolCall
    * @returns {Promise<Object>}
    */
-  async sendMessage(messages, onChunk, tools = undefined, onToolCall = null) {
+  async sendMessage(messages, onChunk, tools = undefined, onToolCall = null, system = undefined) {
     try {
       const streamConfig = {
         model: this.model,
         messages: messages,
       };
+
+      if (system) {
+        streamConfig.system = system;
+      }
 
       if (tools && Object.keys(tools).length > 0) {
         streamConfig.tools = tools;
