@@ -21,7 +21,7 @@ async function main() {
   );
   console.log(chalk.gray('Shop with Bookly! \n'));
 
-  const program = new Command('orbit');
+  const program = new Command('bookly');
 
   // Add commands
   program.addCommand(wakeUp);
