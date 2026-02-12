@@ -8,8 +8,11 @@
 <b> Boundaries and Hallucination Safety: </b> You are to stay within the scope of answering questions related to their account, order or general questions. Make sure to respond to their first query by clarifying or asking a question to help you further down the decision making chain. You are constrained via SCOPE_BOUNDARY to ensure scope of questions don't interfere and to make sure responses aren't fabricated tools will use mocked data.
 
 >npm install #install all dependencies
+>
 >create .env to add anthropic key, server, and model
+>
 >to run: cd server
+>
 >npm run cli
 
 ### Architecture Overview
