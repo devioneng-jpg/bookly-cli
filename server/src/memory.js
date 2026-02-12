@@ -19,8 +19,11 @@ class MemoryStore {
     return this.interactions;
   }
 
-  getRecent(count = 10) {
-    return this.interactions.slice(-count);
+  getRecent(count = 10, conversationId = null) {
+    const pool = conversationId
+      ? this.interactions.filter((e) => e.conversationId === conversationId)
+      : this.interactions;
+    return pool.slice(-count);
   }
 
   getById(id) {

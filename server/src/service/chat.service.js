@@ -61,8 +61,8 @@ export class ChatService {
       .filter((e) => e.role === 'user' || e.role === 'assistant');
   }
 
-  getRecentMessages(count = 10) {
-    return memory.getRecent(count);
+  getRecentMessages(conversationId, count = 10) {
+    return memory.getRecent(count, conversationId);
   }
 
   formatMessagesForAI(messages) {

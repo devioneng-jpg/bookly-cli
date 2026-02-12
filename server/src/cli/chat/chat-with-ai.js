@@ -4,7 +4,6 @@ import { text, isCancel, cancel, intro, outro } from '@clack/prompts';
 import yoctoSpinner from 'yocto-spinner';
 import { AIService } from '../ai/anthropic-service.js';
 import { ChatService } from '../../service/chat.service.js';
-import memory from '../../memory.js';
 
 const aiService = new AIService();
 const chatService = new ChatService();
@@ -25,32 +24,18 @@ const SYSTEM_PROMPTS = {
   chat: `You are a friendly customer support agent for Bookly. Help the customer with whatever they need. ${HONESTY_CONSTRAINT} ${SCOPE_BOUNDARY}`,
 };
 
+let cachedUser = null;
+
 export function getUserFromToken() {
-  const sessions = memory.findByRole('auth');
-  const session = sessions.length
-    ? JSON.parse(sessions[sessions.length - 1].content)
-    : null;
+  if (cachedUser) return cachedUser;
 
-  if (session?.access_token) {
-    return {
-      id: session.userId,
-      token: session.access_token,
-      authenticatedAt: session.timestamp,
-    };
-  }
-
-  const guest = {
-    userId: `guest_${Date.now()}`,
-    access_token: 'guest',
-    timestamp: Date.now(),
+  cachedUser = {
+    id: `guest_${Date.now()}`,
+    token: 'guest',
+    authenticatedAt: Date.now(),
   };
-  memory.add('auth', JSON.stringify(guest));
 
-  return {
-    id: guest.userId,
-    token: guest.access_token,
-    authenticatedAt: guest.timestamp,
-  };
+  return cachedUser;
 }
 
 export function initConversation(userId, conversationId = null, mode = 'chat') {
