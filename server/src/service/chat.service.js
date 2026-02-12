@@ -52,12 +52,12 @@ export class ChatService {
   }
 
   addMessage(conversationId, role, content) {
-    return memory.add(role, content);
+    return memory.add(role, content, conversationId);
   }
 
   getMessages(conversationId) {
     return memory
-      .getAll()
+      .findByConversation(conversationId)
       .filter((e) => e.role === 'user' || e.role === 'assistant');
   }
 

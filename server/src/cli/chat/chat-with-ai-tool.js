@@ -1,9 +1,14 @@
 import chalk from 'chalk';
 import boxen from 'boxen';
-import { text, isCancel, cancel, intro, outro, multiselect } from '@clack/prompts';
+import {
+  text,
+  isCancel,
+  cancel,
+  intro,
+  outro,
+  multiselect,
+} from '@clack/prompts';
 import yoctoSpinner from 'yocto-spinner';
-import { marked } from 'marked';
-import { markedTerminal } from 'marked-terminal';
 import { AIService } from '../ai/anthropic-service.js';
 import { ChatService } from '../../service/chat.service.js';
 import {
@@ -13,26 +18,11 @@ import {
   getEnabledToolNames,
   resetTools,
 } from '../../config/tool.config.js';
-import { getUserFromToken, initConversation, saveMessage } from './chat-with-ai.js';
-
-marked.use(
-  markedTerminal({
-    code: chalk.cyan,
-    blockquote: chalk.gray.italic,
-    heading: chalk.green.bold,
-    firstHeading: chalk.magenta.underline.bold,
-    hr: chalk.reset,
-    listitem: chalk.reset,
-    list: chalk.reset,
-    paragraph: chalk.reset,
-    strong: chalk.bold,
-    em: chalk.italic,
-    codespan: chalk.yellow.bgBlack,
-    del: chalk.dim.gray.strikethrough,
-    link: chalk.blue.underline,
-    href: chalk.blue.underline,
-  }),
-);
+import {
+  getUserFromToken,
+  initConversation,
+  saveMessage,
+} from './chat-with-ai.js';
 
 const aiService = new AIService();
 const chatService = new ChatService();
@@ -77,7 +67,9 @@ async function selectTools() {
     );
     console.log(toolBox);
   } else {
-    console.log(chalk.yellow('No tools selected — running in basic chat mode.'));
+    console.log(
+      chalk.yellow('No tools selected — running in basic chat mode.'),
+    );
   }
 
   return true;
@@ -92,18 +84,12 @@ async function getToolAIResponse(conversationId) {
   const dbMessages = chatService.getMessages(conversationId);
   const aiMessages = chatService.formatMessagesForAI(dbMessages);
 
-  const messages = [
-    { role: 'system', content: TOOL_SYSTEM_PROMPT },
-    ...aiMessages,
-  ];
-
   const tools = getEnabledTools();
-  let fullResponse = '';
   let isFirstChunk = true;
 
   try {
     const result = await aiService.sendMessage(
-      messages,
+      aiMessages,
       (chunk) => {
         if (isFirstChunk) {
           spinner.stop();
@@ -112,7 +98,7 @@ async function getToolAIResponse(conversationId) {
           console.log(chalk.gray('-'.repeat(60)));
           isFirstChunk = false;
         }
-        fullResponse += chunk;
+        process.stdout.write(chunk);
       },
       tools,
       (toolCall) => {
@@ -129,6 +115,7 @@ async function getToolAIResponse(conversationId) {
         );
         console.log(toolBox);
       },
+      TOOL_SYSTEM_PROMPT,
     );
 
     if (result.toolResults && result.toolResults.length > 0) {
@@ -149,8 +136,6 @@ async function getToolAIResponse(conversationId) {
     }
 
     console.log('\n');
-    const renderedMarkdown = marked.parse(fullResponse);
-    console.log(renderedMarkdown);
     console.log(chalk.gray('-'.repeat(60)));
     console.log('\n');
 
@@ -197,13 +182,19 @@ async function toolChatLoop(conversation) {
 
     messageCount++;
     await saveMessage(conversation.id, 'user', userInput);
-    const aiResponse = await getToolAIResponse(conversation.id);
-    await saveMessage(conversation.id, 'assistant', aiResponse);
 
-    if (messageCount === 1) {
-      const title =
-        userInput.slice(0, 50) + (userInput.length > 50 ? '...' : '');
-      chatService.updateTitle(conversation.id, title);
+    try {
+      const aiResponse = await getToolAIResponse(conversation.id);
+      await saveMessage(conversation.id, 'assistant', aiResponse);
+
+      if (messageCount === 1) {
+        const title =
+          userInput.slice(0, 50) + (userInput.length > 50 ? '...' : '');
+        chatService.updateTitle(conversation.id, title);
+      }
+    } catch (error) {
+      console.log(chalk.red(`\nFailed to get response: ${error.message}`));
+      console.log(chalk.gray('Please try again.\n'));
     }
   }
 }
@@ -211,7 +202,7 @@ async function toolChatLoop(conversation) {
 export async function startToolChat(conversationId = null) {
   try {
     intro(
-      boxen(chalk.bold.cyan('Orbit AI - Tool Calling Mode'), {
+      boxen(chalk.bold.cyan('Bookly'), {
         padding: 1,
         borderStyle: 'double',
         borderColor: 'cyan',

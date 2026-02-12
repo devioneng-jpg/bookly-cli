@@ -3,11 +3,12 @@ class MemoryStore {
     this.interactions = [];
   }
 
-  add(role, content) {
+  add(role, content, conversationId = null) {
     const entry = {
       id: this.interactions.length,
       role,
       content,
+      conversationId,
       timestamp: Date.now(),
     };
     this.interactions.push(entry);
@@ -28,6 +29,12 @@ class MemoryStore {
 
   findByRole(role) {
     return this.interactions.filter((entry) => entry.role === role);
+  }
+
+  findByConversation(conversationId) {
+    return this.interactions.filter(
+      (entry) => entry.conversationId === conversationId,
+    );
   }
 
   clear() {

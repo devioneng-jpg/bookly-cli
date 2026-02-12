@@ -2,45 +2,27 @@ import chalk from 'chalk';
 import boxen from 'boxen';
 import { text, isCancel, cancel, intro, outro } from '@clack/prompts';
 import yoctoSpinner from 'yocto-spinner';
-import { marked } from 'marked';
-import { markedTerminal } from 'marked-terminal';
 import { AIService } from '../ai/anthropic-service.js';
 import { ChatService } from '../../service/chat.service.js';
 import memory from '../../memory.js';
 
-marked.use(
-  markedTerminal({
-    code: chalk.cyan,
-    blockquote: chalk.gray.italic,
-    heading: chalk.green.bold,
-    firstHeading: chalk.magenta.underline.bold,
-    hr: chalk.reset,
-    listitem: chalk.reset,
-    list: chalk.reset,
-    paragraph: chalk.reset,
-    strong: chalk.bold,
-    em: chalk.italic,
-    codespan: chalk.yellow.bgBlack,
-    del: chalk.dim.gray.strikethrough,
-    link: chalk.blue.underline,
-    href: chalk.blue.underline,
-  }),
-);
-
 const aiService = new AIService();
 const chatService = new ChatService();
+
+const HONESTY_CONSTRAINT =
+  'IMPORTANT: You do NOT have access to any real customer data, order systems, or account information. Never make up order statuses, tracking numbers, refund confirmations, or any specific account details. If the customer asks you to look up an order, check a status, or process a refund, let them know you cannot access those systems directly and direct them to support@bookly.com or call 1-800-BOOKLY for account-specific help. You CAN answer general policy questions (shipping times, return policy, gift cards, password resets) since those apply to all customers.';
 
 const SCOPE_BOUNDARY =
   'You can ONLY help with Bookly-related topics: orders, refunds, shipping, account issues, gift cards, and our product catalog. If the customer asks about anything unrelated to Bookly (e.g. general knowledge, coding, weather, other companies), politely let them know you can only assist with Bookly matters and ask how you can help them with their Bookly experience.';
 
 const SYSTEM_PROMPTS = {
   'order-check':
-    `You are a friendly customer support agent for Bookly. The customer wants to check on their order status. You already asked whether they have an account or checked out as a guest — their answer is included as the first message. Based on their answer, guide them accordingly: if they have an account, ask for their email or order number; if they are a guest, ask for the order number and email used at checkout. Be helpful and provide clear updates. ${SCOPE_BOUNDARY}`,
+    `You are a friendly customer support agent for Bookly. The customer wants to check on their order status. You already asked whether they have an account or checked out as a guest — their answer is included as the first message. Based on their answer, guide them accordingly: if they have an account, ask for their email or order number; if they are a guest, ask for the order number and email used at checkout. Be helpful and provide clear updates. ${HONESTY_CONSTRAINT} ${SCOPE_BOUNDARY}`,
   refund:
-    `You are a friendly customer support agent for Bookly. The customer wants a refund. You already asked what is prompting their refund — their answer is included as the first message. Be empathetic and acknowledge their reason. Then ask for their order number so you can look into it. Explain the refund policy (30-day return window, original condition, digital purchases non-refundable) and walk them through the process. ${SCOPE_BOUNDARY}`,
+    `You are a friendly customer support agent for Bookly. The customer wants a refund. You already asked what is prompting their refund — their answer is included as the first message. Be empathetic and acknowledge their reason. Then ask for their order number so you can look into it. Explain the refund policy (30-day return window, original condition, digital purchases non-refundable) and walk them through the process. ${HONESTY_CONSTRAINT} ${SCOPE_BOUNDARY}`,
   general:
-    `You are a friendly customer support agent for Bookly. The customer has a general question. You already asked about the nature of their question — their answer is included as the first message. Address their question directly and thoroughly. You can help with shipping policies, password resets, account issues, gift cards, and more. ${SCOPE_BOUNDARY}`,
-  chat: `You are a friendly customer support agent for Bookly. Help the customer with whatever they need. ${SCOPE_BOUNDARY}`,
+    `You are a friendly customer support agent for Bookly. The customer has a general question. You already asked about the nature of their question — their answer is included as the first message. Address their question directly and thoroughly. You can help with shipping policies, password resets, account issues, gift cards, and more. ${HONESTY_CONSTRAINT} ${SCOPE_BOUNDARY}`,
+  chat: `You are a friendly customer support agent for Bookly. Help the customer with whatever they need. ${HONESTY_CONSTRAINT} ${SCOPE_BOUNDARY}`,
 };
 
 export function getUserFromToken() {
@@ -110,26 +92,27 @@ async function getAIResponse(conversationId, systemPrompt) {
   const dbMessages = chatService.getMessages(conversationId);
   const aiMessages = chatService.formatMessagesForAI(dbMessages);
 
-  const messages = [{ role: 'system', content: systemPrompt }, ...aiMessages];
-
-  let fullResponse = '';
   let isFirstChunk = true;
 
   try {
-    const result = await aiService.sendMessage(messages, (chunk) => {
-      if (isFirstChunk) {
-        spinner.stop();
-        console.log('\n');
-        console.log(chalk.green.bold('Assistant:'));
-        console.log(chalk.gray('-'.repeat(60)));
-        isFirstChunk = false;
-      }
-      fullResponse += chunk;
-    });
+    const result = await aiService.sendMessage(
+      aiMessages,
+      (chunk) => {
+        if (isFirstChunk) {
+          spinner.stop();
+          console.log('\n');
+          console.log(chalk.green.bold('Assistant:'));
+          console.log(chalk.gray('-'.repeat(60)));
+          isFirstChunk = false;
+        }
+        process.stdout.write(chunk);
+      },
+      undefined,
+      null,
+      systemPrompt,
+    );
 
     console.log('\n');
-    const renderedMarkdown = marked.parse(fullResponse);
-    console.log(renderedMarkdown);
     console.log(chalk.gray('-'.repeat(60)));
     console.log('\n');
 
@@ -191,9 +174,15 @@ async function chatLoop(conversation) {
 
     messageCount++;
     await saveMessage(conversation.id, 'user', userInput);
-    const aiResponse = await getAIResponse(conversation.id, systemPrompt);
-    await saveMessage(conversation.id, 'assistant', aiResponse);
-    await updateConversationTitle(conversation.id, userInput, messageCount);
+
+    try {
+      const aiResponse = await getAIResponse(conversation.id, systemPrompt);
+      await saveMessage(conversation.id, 'assistant', aiResponse);
+      await updateConversationTitle(conversation.id, userInput, messageCount);
+    } catch (error) {
+      console.log(chalk.red(`\nFailed to get response: ${error.message}`));
+      console.log(chalk.gray('Please try again.\n'));
+    }
   }
 }
 
