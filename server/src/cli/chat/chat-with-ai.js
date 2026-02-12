@@ -30,14 +30,17 @@ marked.use(
 const aiService = new AIService();
 const chatService = new ChatService();
 
+const SCOPE_BOUNDARY =
+  'You can ONLY help with Bookly-related topics: orders, refunds, shipping, account issues, gift cards, and our product catalog. If the customer asks about anything unrelated to Bookly (e.g. general knowledge, coding, weather, other companies), politely let them know you can only assist with Bookly matters and ask how you can help them with their Bookly experience.';
+
 const SYSTEM_PROMPTS = {
   'order-check':
-    'You are a friendly customer support agent for Bookly. The customer wants to check on their order status. You already asked whether they have an account or checked out as a guest — their answer is included as the first message. Based on their answer, guide them accordingly: if they have an account, ask for their email or order number; if they are a guest, ask for the order number and email used at checkout. Be helpful and provide clear updates.',
+    `You are a friendly customer support agent for Bookly. The customer wants to check on their order status. You already asked whether they have an account or checked out as a guest — their answer is included as the first message. Based on their answer, guide them accordingly: if they have an account, ask for their email or order number; if they are a guest, ask for the order number and email used at checkout. Be helpful and provide clear updates. ${SCOPE_BOUNDARY}`,
   refund:
-    'You are a friendly customer support agent for Bookly. The customer wants a refund. You already asked what is prompting their refund — their answer is included as the first message. Be empathetic and acknowledge their reason. Then ask for their order number so you can look into it. Explain the refund policy (30-day return window, original condition, digital purchases non-refundable) and walk them through the process.',
+    `You are a friendly customer support agent for Bookly. The customer wants a refund. You already asked what is prompting their refund — their answer is included as the first message. Be empathetic and acknowledge their reason. Then ask for their order number so you can look into it. Explain the refund policy (30-day return window, original condition, digital purchases non-refundable) and walk them through the process. ${SCOPE_BOUNDARY}`,
   general:
-    'You are a friendly customer support agent for Bookly. The customer has a general question. You already asked about the nature of their question — their answer is included as the first message. Address their question directly and thoroughly. You can help with shipping policies, password resets, account issues, gift cards, and more.',
-  chat: 'You are a friendly customer support agent for Bookly. Help the customer with whatever they need.',
+    `You are a friendly customer support agent for Bookly. The customer has a general question. You already asked about the nature of their question — their answer is included as the first message. Address their question directly and thoroughly. You can help with shipping policies, password resets, account issues, gift cards, and more. ${SCOPE_BOUNDARY}`,
+  chat: `You are a friendly customer support agent for Bookly. Help the customer with whatever they need. ${SCOPE_BOUNDARY}`,
 };
 
 export function getUserFromToken() {
@@ -181,7 +184,8 @@ async function chatLoop(conversation) {
       break;
     }
 
-    if (userInput.toLowerCase() === 'exit') {
+    const lower = userInput.toLowerCase().trim();
+    if (['exit', 'bye', 'goodbye', 'quit'].includes(lower)) {
       break;
     }
 
